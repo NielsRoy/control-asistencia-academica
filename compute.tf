@@ -26,7 +26,7 @@ resource "aws_instance" "backend_server" {
 
   user_data = <<-EOF
     #!/bin/bash
-    curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+    curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
     sudo apt-get install -y nodejs git postgresql postgresql-contrib
     sudo npm install -g pm2
 
@@ -79,7 +79,7 @@ resource "aws_instance" "frontend_server" {
 
   user_data = <<-EOF
     #!/bin/bash
-    curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+    curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
     sudo apt-get install -y nodejs git nginx
 
     # Clonar y construir el frontend
@@ -92,7 +92,7 @@ resource "aws_instance" "frontend_server" {
     sudo rm -rf /var/www/html/*
     sudo cp -r dist/* /var/www/html/
 
-    # Crear configuración de Nginx con Proxy Inverso para /api
+    # Crear configuración de Nginx con Proxy Inverso para /api y WebSockets
     cat <<EOT > /etc/nginx/sites-available/default
     server {
         listen 80 default_server;
@@ -100,19 +100,18 @@ resource "aws_instance" "frontend_server" {
         root /var/www/html;
         index index.html;
 
-        # Sirve los archivos de React, y si no existe (ej. F5 en una ruta), redirige a index.html
         location / {
             try_files \$uri \$uri/ /index.html;
         }
 
-        # Intercepta las llamadas a /api y las envía al servidor Backend
         location /api/ {
-            proxy_pass http://${aws_instance.backend_server.public_ip}:3000/;
+            proxy_pass http://${aws_instance.backend_server.public_ip}:3000;
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
             proxy_http_version 1.1;
             proxy_set_header Upgrade \$http_upgrade;
-            proxy_set_header Connection 'upgrade';
-            proxy_set_header Host \$host;
-            proxy_cache_bypass \$http_upgrade;
+            proxy_set_header Connection "upgrade";
         }
     }
     EOT
